@@ -1,0 +1,106 @@
+* BirdNetPi2pd
+This is a guide on how to set up your Raspberry Pi so you can access it without knowing its IP.
+I'm going to be running BirdNET Pi on mine, so that's the setup example I'll use, but all the I2P
+configuration should work generally.
+
+For initial setup, you can find all the helpful information over on
+https://github.com/Nachtzuster/BirdNET-Pi.
+
+** Installation of i2p
+Once you have Raspberry Pi OS Lite installed, you only need to run a few more commands.
+#+BEGIN_SRC bash
+  # if you're running BirdNET Pi run this, otherwise skip
+  curl -s https://raw.githubusercontent.com/mcguirepr89/BirdNET-Pi/main/newinstaller.sh | bash
+  # It will update and reboot for you, so you can skip the next step if you install BirdNET Pi
+  sudo sh -c 'apt update && apt upgrade'
+  # This will take at least a few minutes either way, so sit tight or grab a snack
+  sudo apt install i2pd
+#+END_SRC
+
+** Configuration
+With everything necessary for this installed, you only have to edit a few text files next.
+
+*** Raspberry Pi
+You'll want to add this to ~/etc/i2pd/tunnels.conf~
+#+BEGIN_SRC conf
+  [SSH-SERVER]
+  # basic server settings
+  type = server
+  host = 127.0.0.1
+  port = 22 # forward connections to SSH port
+  keys = ssh-in.dat
+  signaturetype = 11
+  i2cp.leaseSetType = 5
+  # change these lines
+  # inport is the port i2pd will listen on, can be anything
+  inport = 7722
+  # base64 encoding of the private key you want to use, see the manpage base64(1) for help
+  i2cp.leaseSetPrivKey = cHJpdmF0ZSBrZXkgZXhhbXBsZQo=
+#+END_SRC
+
+Once that's set up, start i2pd with the command
+#+BEGIN_SRC bash
+  sudo systemctl enable i2pd --now
+#+END_SRC
+
+*** Main Computer
+**** i2pd
+With i2pd installed on your main system, update the ~tunnels.conf~ configuration with
+#+BEGIN_SRC conf
+  [ssh-birdnet]
+  type = client
+  host = 127.0.0.1
+  i2cp.dontPublishLeaseSet = true
+  keys = ssh-raspi.dat
+  # change these lines
+  port = 7622 # the port you'll ssh to on your system, remember for later
+  # the base64 of the same password you decided on earlier
+  i2cp.leaseSetPrivKey = cHJpdmF0ZSBrZXkgZXhhbXBsZQo=
+  # destination is a bit more complex to find, see instructions below
+  destination = 7fa6d224b09c37e16be0213a7f1c5d2f4b58feff2d72bfb3059a056b.b32.i2p
+#+END_SRC
+
+To find the destination address, you must do this.
+Connect, in a web browser, to your Raspberry Pi on port 7070.
+For example, if your Pi's IP address is 10.0.0.2 on your home network, you'd connect to
+http://10.0.0.2:7070 in your preferred web browser.
+
+From there:
+1. click on =I2P Tunnels= on the left side of the screen
+2. click on =SSH-SERVER= in the tunnel list, under the =Server Tunnels= section
+3. underneath the =Base64= section, click on =Encrypted B33 address:=
+4. The address that is displayed is the one you want to insert into your configuration file
+5. Copy & paste the address into the ~destination =~ section of the configuration
+
+Finally, restart i2pd on your computer.
+**** ssh
+Now, to ssh in over i2pd, you only need one command
+#+BEGIN_SRC bash
+  # This is where you need to remember the port you configured earlier, and relpace 7622 with it
+  ssh piuser@127.0.0.1 -p 7622
+#+END_SRC
+
+Instead of running this, however, I suggest setting up an ssh key and ~~/.ssh/config~.
+To set up an ssh-key, you only need to run a few commands
+#+BEGIN_SRC bash
+  ssh-keygen
+  # this will prompt you to enter a file and passphrase. Remember both!
+  # you need the path to your key for the next command, and the passpharse to use it
+  ssh-copy-id -i /path/to/key -p 7622 piuser@127.0.0.1
+#+END_SRC
+
+Then, edit ~~/.ssh/config~ and add the following section:
+#+BEGIN_SRC conf
+  host raspberrypi2pd
+       HostName 127.0.0.1
+       PreferredAuthentications publickey
+       # change these lines
+       Port 7622 # whichever port you selected earlier
+       IdentityFile /path/to/key # the key you just generated
+       User piuser # your username on the raspberry pi
+#+END_SRC
+
+Now you should be able to ssh into your Pi with just this, much simpler, command
+#+BEGIN_SRC bash
+  ssh raspberrypi2pd
+#+END_SRC
